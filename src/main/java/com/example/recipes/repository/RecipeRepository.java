@@ -1,15 +1,24 @@
 package com.example.recipes.repository;
 
 import com.example.recipes.entity.Recipe;
+import com.example.recipes.entity.User;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface RecipeRepository extends JpaRepository<Recipe, Long> {
+
+    List<Recipe> findByUser(User owner); // get recipes of a specific user
+
+    List<Recipe> findByIsPublicTrue(); // get public recipes
+
+    Page<Recipe> findAll(Pageable pageable);
 
     // Find recipes by vegetarian
     List<Recipe> findByVegetarian(boolean vegetarian);
