@@ -3,6 +3,7 @@ package com.example.recipes.service;
 import com.example.recipes.dto.RecipeDTO;
 import com.example.recipes.entity.Ingredient;
 import com.example.recipes.entity.Recipe;
+import com.example.recipes.exception.RecipeNotFoundException;
 import com.example.recipes.repository.IngredientRepository;
 import com.example.recipes.repository.RecipeRepository;
 import org.springframework.stereotype.Service;
@@ -52,7 +53,7 @@ public class RecipeService {
 
     public Recipe getRecipeById(Long id) {
         return recipeRepository.findByIdWithIngredients(id)
-                .orElseThrow(() -> new RuntimeException("Recipe not found with id: " + id));
+                .orElseThrow(() -> new RecipeNotFoundException("Recipe with ID " + id + " not found"));
     }
 
     public List<Recipe> getAllRecipes() {
@@ -109,6 +110,8 @@ public class RecipeService {
 
     @Transactional
     public void deleteRecipe(Long id) {
-        recipeRepository.deleteById(id);
+        Recipe recipe = recipeRepository.findById(id)
+                .orElseThrow(() -> new RecipeNotFoundException("Cannot delete. Recipe with ID " + id + " does not exist"));
+        recipeRepository.delete(recipe);
     }
 }

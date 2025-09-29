@@ -5,6 +5,8 @@ import com.example.recipes.entity.Ingredient;
 import com.example.recipes.entity.Recipe;
 import com.example.recipes.repository.IngredientRepository;
 import com.example.recipes.service.RecipeService;
+import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -16,14 +18,11 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/recipes")
+@AllArgsConstructor
 public class RecipeController {
 
     private final RecipeService service;
     private final IngredientRepository ingredientRepository;
-    public RecipeController(RecipeService service, IngredientRepository ingredientRepository) {
-        this.service = service;
-        this.ingredientRepository = ingredientRepository;
-    }
 
     // CREATE
     @PostMapping
@@ -46,14 +45,12 @@ public class RecipeController {
     }
 
     // UPDATE
-// UPDATE
     @PutMapping("/{id}")
     public ResponseEntity<Recipe> updateRecipe(@PathVariable Long id,
                                                @RequestBody RecipeDTO dto) {
         Recipe updated = service.updateRecipe(id, dto); // delegate to service
         return ResponseEntity.ok(updated);
     }
-
 
 
     // DELETE
