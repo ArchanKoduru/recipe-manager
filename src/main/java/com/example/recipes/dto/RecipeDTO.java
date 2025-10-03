@@ -1,24 +1,27 @@
 package com.example.recipes.dto;
 import jakarta.validation.constraints.*;
+import lombok.Data;
 
 import java.util.List;
-import java.util.Set;
 
+@Data
 public class RecipeDTO {
 
     @NotBlank(message = "Recipe name is required")
     @Size(min = 2, max = 100, message = "Recipe name must be between 2 and 100 characters")
-    public String name;
+    private String name;
 
     @NotNull(message = "Vegetarian flag is required")
-    public boolean vegetarian;
+    private boolean vegetarian;
 
     @Min(value = 1, message = "Servings must be at least 1")
-    public int servings;
+    private int servings;
 
     @NotBlank(message = "Instructions are required")
-    public String instructions;
+    private String instructions;
 
     @NotEmpty(message = "At least one ingredient is required")
-    public List<@NotBlank(message = "Ingredient name cannot be blank") String> ingredients;
+    private List<@NotBlank(message = "Ingredient name cannot be blank") String> ingredients;
+
+    private boolean isPublic;
 }

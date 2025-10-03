@@ -6,10 +6,9 @@ import com.example.recipes.service.RecipeService;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,41 +35,25 @@ public class RecipeController {
         return ResponseEntity.ok(new ApiResponse<>("Recipe created successfully", recipe));
     }
 
-    // READ ALL (with pagination & sorting)
-    @GetMapping
-    public ResponseEntity<ApiResponse<Page<Recipe>>> getAllRecipes(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "name") String sortBy) {
-
-        Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy));
-        Page<Recipe> recipes = service.getAllRecipes(pageable);
-        return ResponseEntity.ok(new ApiResponse<>("Recipes fetched successfully", recipes));
-    }
-
     // READ BY ID
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Recipe>> getRecipeById(@PathVariable Long id) {
-        Recipe recipe = service.getRecipeById(id);
+    public ResponseEntity<ApiResponse<Recipe>> getRecipeById(@PathVariable Long id,
+                                                             Authentication auth) {
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        Recipe recipe = service.getRecipeById(id, auth.getName(), isAdmin);
         return ResponseEntity.ok(new ApiResponse<>("Recipe fetched successfully", recipe));
     }
 
-    // GET PUBLIC RECIPES
-    @GetMapping("/public")
-    public ResponseEntity<ApiResponse<List<Recipe>>> getPublicRecipes() {
-        List<Recipe> recipes = service.getPublicRecipes();
-        return ResponseEntity.ok(new ApiResponse<>("Public recipes fetched successfully", recipes));
-    }
-
     // UPDATE
+    @PreAuthorize("hasRole('ADMIN') or #auth.name == @recipeService.getRecipeOwnerUsername(#id)")
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<Recipe>> updateRecipe(
             @PathVariable Long id,
-            @Valid @RequestBody RecipeDTO dto,
-            Authentication authentication) {
+            @RequestBody RecipeDTO recipeDto,
+            Authentication auth) {
 
-        String username = authentication.getName();
-        Recipe updated = service.updateRecipe(username, id, dto);
+        Recipe updated = service.updateRecipe(auth.getName(), id, recipeDto);
         return ResponseEntity.ok(new ApiResponse<>("Recipe updated successfully", updated));
     }
 
@@ -80,46 +63,33 @@ public class RecipeController {
             @PathVariable Long id,
             Authentication authentication) {
 
-        String username = authentication.getName();
-        service.deleteRecipe(username, id);
+        service.deleteRecipe(authentication.getName(), id);
         return ResponseEntity.ok(new ApiResponse<>("Recipe deleted successfully", null));
     }
 
-    // FILTER: Vegetarian
-    @GetMapping("/vegetarian")
-    public ResponseEntity<ApiResponse<List<Recipe>>> filterVegetarian(@RequestParam boolean vegetarian) {
-        List<Recipe> recipes = service.filterVegetarian(vegetarian);
-        return ResponseEntity.ok(new ApiResponse<>("Vegetarian recipes fetched successfully", recipes));
-    }
+    // ===== SEARCH / FILTER =====
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<Page<Recipe>>> searchRecipes(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) Boolean vegetarian,
+            @RequestParam(required = false) Integer servings,
+            @RequestParam(required = false) List<String> ingredients,
+            @RequestParam(required = false) List<String> excludedIngredients,
+            @RequestParam(required = false) String text,
+            Authentication authentication,
+            Pageable pageable) {
 
-    // FILTER: Servings
-    @GetMapping("/servings")
-    public ResponseEntity<ApiResponse<List<Recipe>>> filterByServings(@RequestParam int servings) {
-        List<Recipe> recipes = service.filterByServings(servings);
-        return ResponseEntity.ok(new ApiResponse<>("Recipes filtered by servings", recipes));
-    }
+        String username = authentication.getName();
+        boolean isAdmin = authentication.getAuthorities()
+                .stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
 
-    // FILTER: By ingredients
-    @GetMapping("/ingredients")
-    public ResponseEntity<ApiResponse<List<Recipe>>> filterByIngredients(@RequestParam List<String> ingredients) {
-        List<Recipe> recipes = service.filterByIngredients(ingredients);
-        return ResponseEntity.ok(new ApiResponse<>("Recipes filtered by ingredients", recipes));
-    }
+        Page<Recipe> result = service.searchRecipes(
+                name, vegetarian, servings,
+                ingredients, excludedIngredients, text,
+                authentication.getName(), isAdmin, pageable
+        );
 
-    // FILTER: Exclude ingredients with text
-    @GetMapping("/exclude-ingredients")
-    public ResponseEntity<ApiResponse<List<Recipe>>> filterExcludingIngredients(
-            @RequestParam List<String> ingredients,
-            @RequestParam String text) {
-
-        List<Recipe> recipes = service.filterExcludingIngredientsWithText(ingredients, text);
-        return ResponseEntity.ok(new ApiResponse<>("Recipes filtered by exclusions", recipes));
-    }
-
-    // SEARCH: Instructions
-    @GetMapping("/search-instructions")
-    public ResponseEntity<ApiResponse<List<Recipe>>> searchInstructions(@RequestParam String text) {
-        List<Recipe> recipes = service.searchInstructions(text);
-        return ResponseEntity.ok(new ApiResponse<>("Recipes searched by instructions", recipes));
+        return ResponseEntity.ok(new ApiResponse<>("Recipes fetched successfully", result));
     }
 }

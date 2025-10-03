@@ -4,6 +4,7 @@ import com.example.recipes.dto.RecipeDTO;
 import com.example.recipes.entity.Ingredient;
 import com.example.recipes.entity.Recipe;
 import com.example.recipes.entity.User;
+import com.example.recipes.mapper.RecipeMapper;
 import com.example.recipes.repository.IngredientRepository;
 import com.example.recipes.repository.RecipeRepository;
 import com.example.recipes.repository.UserRepository;
@@ -11,7 +12,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,6 +26,7 @@ class RecipeServiceTest {
     private RecipeRepository recipeRepository;
     private IngredientRepository ingredientRepository;
     private UserRepository userRepository;
+    private RecipeMapper recipeMapper;
     private RecipeService service;
 
     @BeforeEach
@@ -29,45 +34,58 @@ class RecipeServiceTest {
         recipeRepository = Mockito.mock(RecipeRepository.class);
         ingredientRepository = Mockito.mock(IngredientRepository.class);
         userRepository = Mockito.mock(UserRepository.class);
-        service = new RecipeService(recipeRepository, ingredientRepository, userRepository);
+        recipeMapper = Mockito.mock(RecipeMapper.class);
+
+        service = new RecipeService(recipeRepository, ingredientRepository, userRepository, recipeMapper);
     }
 
     @Test
     void testCreateRecipe() {
-        // 1️⃣ Prepare DTO
         RecipeDTO dto = new RecipeDTO();
-        dto.name = "Pasta";
-        dto.servings = 2;
-        dto.vegetarian = true;
-        dto.instructions = "Boil pasta.";
-        dto.ingredients = List.of("Pasta", "Olive Oil");
+        dto.setName("Pasta");
+        dto.setServings(2);
+        dto.setVegetarian(true);
+        dto.setInstructions("Boil pasta.");
+        dto.setIngredients(List.of("Pasta", "Olive Oil"));
 
-        // 2️⃣ Mock user lookup
         User mockUser = new User();
         mockUser.setUsername("testUser");
         mockUser.setId(1L);
         when(userRepository.findByUsername("testUser")).thenReturn(Optional.of(mockUser));
 
-        // 3️⃣ Mock ingredient repository
         Ingredient pasta = new Ingredient();
-        pasta.setId(1L);
         pasta.setName("Pasta");
         pasta.setRecipes(new HashSet<>());
-
         when(ingredientRepository.findByName("Pasta")).thenReturn(Optional.of(pasta));
         when(ingredientRepository.findByName("Olive Oil")).thenReturn(Optional.empty());
+        when(recipeMapper.toEntity(dto, ingredientRepository)).thenAnswer(invocation -> {
+            Recipe r = new Recipe();
+            r.setName(dto.getName());
+            r.setServings(dto.getServings());
+            r.setVegetarian(dto.isVegetarian());
+            r.setInstructions(dto.getInstructions());
 
-        // 4️⃣ Mock recipe save
-        when(recipeRepository.save(any(Recipe.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            Set<Ingredient> ingredients = new HashSet<>();
+            for (String name : dto.getIngredients()) {
+                Ingredient ing = ingredientRepository.findByName(name).orElseGet(() -> {
+                    Ingredient newIng = new Ingredient();
+                    newIng.setName(name);
+                    return newIng;
+                });
+                ingredients.add(ing);
+            }
+            r.setIngredients(ingredients);
+            r.setUser(userRepository.findByUsername("testUser").get());
+            return r; });
 
-        // 5️⃣ Call service
+        when(recipeRepository.save(any(Recipe.class))).thenAnswer(inv -> inv.getArgument(0));
+
         Recipe saved = service.createRecipe("testUser", dto);
 
-        // 6️⃣ Verify
-        assertThat(saved.getName()).isEqualTo("Pasta");
+        assertThat(saved.getName()).isEqualTo(dto.getName());
         assertThat(saved.getIngredients())
-                .extracting("name")
-                .containsExactlyInAnyOrder("Pasta", "Olive Oil");
+                .extracting(Ingredient::getName)
+                .containsExactlyInAnyOrderElementsOf(dto.getIngredients());
         assertThat(saved.getUser().getUsername()).isEqualTo("testUser");
     }
 }

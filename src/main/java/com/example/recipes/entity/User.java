@@ -33,6 +33,11 @@ public class User {
     @Setter(AccessLevel.NONE)
     private Set<Recipe> recipes = new HashSet<>();
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "role")
+    private Set<String> roles = new HashSet<>();
+
     public void addRecipe(Recipe recipe) {
         recipes.add(recipe);
         recipe.setUser(this);

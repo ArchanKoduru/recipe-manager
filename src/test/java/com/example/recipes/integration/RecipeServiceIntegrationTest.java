@@ -1,7 +1,6 @@
 package com.example.recipes.integration;
 
 import com.example.recipes.dto.RecipeDTO;
-import com.example.recipes.entity.Ingredient;
 import com.example.recipes.entity.Recipe;
 import com.example.recipes.entity.User;
 import com.example.recipes.repository.IngredientRepository;
@@ -10,99 +9,108 @@ import com.example.recipes.repository.UserRepository;
 import com.example.recipes.service.RecipeService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.util.*;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 
+@Testcontainers
+@SpringBootTest
 class RecipeServiceIntegrationTest {
 
-    private RecipeRepository recipeRepository;
-    private IngredientRepository ingredientRepository;
-    private UserRepository userRepository;
+    @Container
+    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0.33")
+            .withDatabaseName("recipes")
+            .withUsername("test")
+            .withPassword("test");
+
+    @Autowired
     private RecipeService recipeService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private RecipeRepository recipeRepository;
+
+    @Autowired
+    private IngredientRepository ingredientRepository;
 
     private User testUser;
 
+    @DynamicPropertySource
+    static void setDatasourceProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", mysql::getJdbcUrl);
+        registry.add("spring.datasource.username", mysql::getUsername);
+        registry.add("spring.datasource.password", mysql::getPassword);
+        registry.add("spring.datasource.driver-class-name", mysql::getDriverClassName);
+    }
+
     @BeforeEach
     void setup() {
-        recipeRepository = Mockito.mock(RecipeRepository.class);
-        ingredientRepository = Mockito.mock(IngredientRepository.class);
-        userRepository = Mockito.mock(UserRepository.class);
+        recipeRepository.deleteAll();
+        userRepository.deleteAll();
 
-        recipeService = new RecipeService(recipeRepository, ingredientRepository, userRepository);
-
-        // Create test user
         testUser = new User();
-        testUser.setId(1L);
         testUser.setUsername("testuser");
-        testUser.setPassword("password");
-
-        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+        testUser.setPassword("password"); // plain for testing
+        userRepository.save(testUser);
     }
 
     @Test
-    void testCreateAndGetRecipe() {
+    void createRecipe_success() {
         RecipeDTO dto = new RecipeDTO();
-        dto.name = "Pasta";
-        dto.servings = 2;
-        dto.vegetarian = true;
-        dto.instructions = "Boil pasta.";
-        dto.ingredients = List.of("Pasta", "Olive Oil");
+        dto.setName("Pasta");
+        dto.setServings(2);
+        dto.setVegetarian(true);
+        dto.setInstructions("Boil pasta and add sauce");
+        dto.setIngredients(List.of("Pasta", "Olive Oil"));
+        dto.setPublic(true);
 
-        // Mock ingredients
-        Ingredient pasta = new Ingredient();
-        pasta.setId(1L);
-        pasta.setName("Pasta");
-        pasta.setRecipes(new HashSet<>());
+        Recipe created = recipeService.createRecipe("testuser", dto);
 
-        when(ingredientRepository.findByName("Pasta")).thenReturn(Optional.of(pasta));
-        when(ingredientRepository.findByName("Olive Oil")).thenReturn(Optional.empty());
-
-        // Mock recipe save
-        when(recipeRepository.save(any(Recipe.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        Recipe saved = recipeService.createRecipe("testuser", dto);
-
-        assertThat(saved.getName()).isEqualTo("Pasta");
-        assertThat(saved.getIngredients())
-                .extracting("name")
+        assertThat(created.getId()).isNotNull();
+        assertThat(created.getUser().getUsername()).isEqualTo("testuser");
+        assertThat(created.getIngredients()).extracting("name")
                 .containsExactlyInAnyOrder("Pasta", "Olive Oil");
-        assertThat(saved.getUser().getUsername()).isEqualTo("testuser");
     }
 
     @Test
-    void testDeleteRecipe() {
-        Recipe recipe = new Recipe();
-        recipe.setId(1L);
-        recipe.setName("Soup");
-        recipe.setUser(testUser);
+    void searchRecipes_success() {
+        // Prepare recipe
+        RecipeDTO dto = new RecipeDTO();
+        dto.setName("Veggie Pasta");
+        dto.setServings(2);
+        dto.setVegetarian(true);
+        dto.setInstructions("Boil pasta with veggies");
+        dto.setIngredients(List.of("Pasta", "Tomato"));
+        dto.setPublic(true);
 
-        when(recipeRepository.findById(1L)).thenReturn(Optional.of(recipe));
+        recipeService.createRecipe("testuser", dto);
 
-        recipeService.deleteRecipe("testuser",1L );
+        // Search
+        var results = recipeService.searchRecipes(
+                "Veggie",
+                true,
+                2,
+                List.of("Pasta"),
+                List.of(), // excluded ingredients
+                "veggies",
+                "testuser",
+                false, // not admin
+                PageRequest.of(0, 10)
+        );
 
-        // No exception means deletion attempted
-        Mockito.verify(recipeRepository).delete(recipe);
-    }
-
-    @Test
-    void testFilterVegetarian() {
-        Recipe veg = new Recipe();
-        veg.setName("Salad");
-        veg.setVegetarian(true);
-
-        Recipe nonVeg = new Recipe();
-        nonVeg.setName("Chicken Soup");
-        nonVeg.setVegetarian(false);
-
-        when(recipeRepository.findByVegetarian(true)).thenReturn(List.of(veg));
-
-        List<Recipe> vegetarianRecipes = recipeService.filterVegetarian(true);
-        assertThat(vegetarianRecipes).hasSize(1);
-        assertThat(vegetarianRecipes.get(0).getName()).isEqualTo("Salad");
+        assertThat(results.getTotalElements()).isEqualTo(1);
+        Recipe r = results.getContent().get(0);
+        assertThat(r.getName()).isEqualTo("Veggie Pasta");
     }
 }
